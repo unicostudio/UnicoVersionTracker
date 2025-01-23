@@ -1,0 +1,11 @@
+{
+  "name": "com.unicostudio.versiontracker",
+  "displayName": "UnicoStudio VersionTracker",
+  "version": "1.0.0",
+  "documentationUrl": "https://github.com/unicostudio/UnicoVersionTracker",
+  "changelogUrl": "https://github.com/unicostudio/UnicoVersionTracker/releases",
+  "description": "A Unity Editor tool to track and save third-party SDK versions and build details (e.g., compression method, platform) automatically after each build.",
+  "dependencies": {
+    "com.unity.nuget.newtonsoft-json": "3.2.1"
+  }
+}
