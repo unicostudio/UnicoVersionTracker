@@ -94,6 +94,11 @@ namespace UnicoStudio.UnicoLibs.VersionTracker
             }
         }
 
+        private static void LogError(string message)
+        {
+            Debug.Log("<color.red>" + message + "</color>");
+        }
+
         private static string GetAppLovinVersion(Type appLovinType)
         {
             if (appLovinType == null) return null;
@@ -110,21 +115,21 @@ namespace UnicoStudio.UnicoLibs.VersionTracker
             var method = appLovinType.GetMethod("LoadPluginData", BindingFlags.Public | BindingFlags.Instance);
             if (method == null)
             {
-                Debug.LogError("LoadPluginData method not found!");
+                LogError("LoadPluginData method not found!");
                 return null;
             }
 
             var property = appLovinType.GetProperty("Instance", BindingFlags.Public | BindingFlags.Static);
             if (property == null)
             {
-                Debug.LogError("AppLovinIntegrationManager.Instance property not found!");
+                LogError("AppLovinIntegrationManager.Instance property not found!");
                 return null;
             }
 
             var appLovinInstance = property.GetValue(null);
             if (appLovinInstance == null)
             {
-                Debug.LogError("AppLovinIntegrationManager.Instance returned null!");
+                LogError("AppLovinIntegrationManager.Instance returned null!");
                 return null;
             }
 
@@ -141,7 +146,7 @@ namespace UnicoStudio.UnicoLibs.VersionTracker
             var enumerator = method.Invoke(appLovinInstance, parameters) as IEnumerator;
             if (enumerator == null)
             {
-                Debug.LogError("LoadPluginData did not return IEnumerator!");
+                LogError("LoadPluginData did not return IEnumerator!");
                 return null;
             }
 
@@ -151,7 +156,7 @@ namespace UnicoStudio.UnicoLibs.VersionTracker
             // If no result, return null
             if (pluginData == null)
             {
-                Debug.LogError("LoadPluginData did not return any PluginData! " +
+                LogError("LoadPluginData did not return any PluginData! " +
                                "You may have internet connection problem..");
                 return null;
             }
@@ -161,14 +166,14 @@ namespace UnicoStudio.UnicoLibs.VersionTracker
             var appLovinMaxField = pluginDataType.GetField("AppLovinMax", BindingFlags.Public | BindingFlags.Instance);
             if (appLovinMaxField == null)
             {
-                Debug.LogError("AppLovinMax field not found in PluginData!");
+                LogError("AppLovinMax field not found in PluginData!");
                 return null;
             }
 
             var appLovinMax = appLovinMaxField.GetValue(pluginData);
             if (appLovinMax == null)
             {
-                Debug.LogError("AppLovinMax is null!");
+                LogError("AppLovinMax is null!");
                 return null;
             }
 
@@ -178,14 +183,14 @@ namespace UnicoStudio.UnicoLibs.VersionTracker
             var mediatedNetworksField = pluginDataType.GetField("MediatedNetworks", BindingFlags.Public | BindingFlags.Instance);
             if (mediatedNetworksField == null)
             {
-                Debug.LogError("MediatedNetworks field not found in PluginData!");
+                LogError("MediatedNetworks field not found in PluginData!");
                 return null;
             }
 
             var mediatedNetworks = mediatedNetworksField.GetValue(pluginData) as object[];
             if (mediatedNetworks == null)
             {
-                Debug.LogError("MediatedNetworks is null!");
+                LogError("MediatedNetworks is null!");
                 return null;
             }
 
@@ -200,14 +205,14 @@ namespace UnicoStudio.UnicoLibs.VersionTracker
             var partnerMicroSdksField = pluginDataType.GetField("PartnerMicroSdks", BindingFlags.Public | BindingFlags.Instance);
             if (partnerMicroSdksField == null)
             {
-                Debug.LogError("MediatedNetworks field not found in PluginData!");
+                LogError("MediatedNetworks field not found in PluginData!");
                 return null;
             }
 
             var partnerMicroSdks = partnerMicroSdksField.GetValue(pluginData) as object[];
             if (partnerMicroSdks == null)
             {
-                Debug.LogError("PartnerMicroSdks is null!");
+                LogError("PartnerMicroSdks is null!");
                 return null;
             }
 
@@ -256,7 +261,7 @@ namespace UnicoStudio.UnicoLibs.VersionTracker
             var files = Directory.GetFiles(folderPath, "GoogleMobileAds_version*.txt");
             if (files.Length <= 0)
             {
-                Debug.LogError("AdMob Unity version file not found!");
+                LogError("AdMob Unity version file not found!");
                 return null;
             }
 
@@ -272,7 +277,7 @@ namespace UnicoStudio.UnicoLibs.VersionTracker
             var dependenciesPath = Path.Combine(ASSETS, "GoogleMobileAdsNative/Editor/GoogleMobileAdsNativeDependencies.xml");
             if (!File.Exists(dependenciesPath))
             {
-                Debug.LogError("Google immersive ads version file not found!");
+                LogError("Google immersive ads version file not found!");
                 return null;
             }
 
@@ -293,7 +298,7 @@ namespace UnicoStudio.UnicoLibs.VersionTracker
                 }
             }
 
-            Debug.LogError("Failed to fetch Google immersive ads version!");
+            LogError("Failed to fetch Google immersive ads version!");
             return null;
         }
 
@@ -305,7 +310,7 @@ namespace UnicoStudio.UnicoLibs.VersionTracker
             var sdkVersion = field?.GetValue(null)?.ToString();
             if (sdkVersion == null)
             {
-                Debug.LogError("SDK_VERSION field not found in OdeeoSdk!");
+                LogError("SDK_VERSION field not found in OdeeoSdk!");
                 return null;
             }
 
@@ -326,7 +331,7 @@ namespace UnicoStudio.UnicoLibs.VersionTracker
             var packageJsonPath = Path.Combine(ASSETS, "Adjust/package.json");
             if (!File.Exists(packageJsonPath))
             {
-                Debug.LogError("Adjust package.json not found!");
+                LogError("Adjust package.json not found!");
                 return null;
             }
 
@@ -337,7 +342,7 @@ namespace UnicoStudio.UnicoLibs.VersionTracker
             var version = jsonObject["version"]?.ToString();
             if (string.IsNullOrEmpty(version))
             {
-                Debug.LogError("Adjust version not found in package.json!");
+                LogError("Adjust version not found in package.json!");
                 return null;
             }
 
@@ -357,7 +362,7 @@ namespace UnicoStudio.UnicoLibs.VersionTracker
             var dependenciesPath = Path.Combine(ASSETS, "Firebase/Editor/AppDependencies.xml");
             if (!File.Exists(dependenciesPath))
             {
-                Debug.LogError("Firebase version file not found!");
+                LogError("Firebase version file not found!");
                 return null;
             }
 
@@ -383,7 +388,7 @@ namespace UnicoStudio.UnicoLibs.VersionTracker
                 }
             }
 
-            Debug.LogError("Failed to fetch Firebase version!");
+            LogError("Failed to fetch Firebase version!");
             return null;
         }
 
@@ -393,7 +398,7 @@ namespace UnicoStudio.UnicoLibs.VersionTracker
             var files = Directory.GetFiles(folderPath, "Firebase*_version*.txt");
             if (files.Length <= 0)
             {
-                Debug.LogError("Firebase plugin version file not found!");
+                LogError("Firebase plugin version file not found!");
                 return null;
             }
 
@@ -422,7 +427,7 @@ namespace UnicoStudio.UnicoLibs.VersionTracker
 
             if (type == null)
             {
-                Debug.LogError($"Type not found in the project: {typeFullName}");
+                LogError($"Type not found in the project: {typeFullName}");
             }
 
             return type;
