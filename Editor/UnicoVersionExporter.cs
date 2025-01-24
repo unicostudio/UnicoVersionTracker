@@ -40,6 +40,13 @@ namespace UnicoStudio.UnicoLibs.VersionTracker
                 new SdkVersionGetter("Firebase.FirebaseApp", GetFirebaseVersion, GetFirebaseVersions)),
         };
 
+        /// <summary>
+        /// Exports the build information to a json file.
+        /// </summary>
+        /// <param name="buildSummary">The build summary.</param>
+        /// <remarks>
+        /// The file path will be <c>Assets/../UnicoVersionTracker/[platform]_BuildInfo.json</c>.
+        /// </remarks>
         public static void ExportBuildInfo(BuildSummary buildSummary)
         {
             var buildInfo = new BuildInfo(buildSummary);
@@ -51,6 +58,12 @@ namespace UnicoStudio.UnicoLibs.VersionTracker
             Debug.Log($"Build info saved to {filePath}");
         }
 
+        /// <summary>
+        /// Exports the SDK information to a json file.
+        /// </summary>
+        /// <remarks>
+        /// The file path will be <c>Assets/../UnicoVersionTracker/SdkInfo.json</c>.
+        /// </remarks>
         [MenuItem("UnicoStudio/Export SdkInfo", priority = -1)]
         private static void ExportSdkInfo()
         {
@@ -86,6 +99,13 @@ namespace UnicoStudio.UnicoLibs.VersionTracker
             return newName;
         }
 
+        /// <summary>
+        /// Refreshes the SDK information by updating the version of each SDK.
+        /// </summary>
+        /// <remarks>
+        /// Iterates through the list of SDKs and calls the <c>SetVersion</c> method 
+        /// on each <c>SdkInfo</c> instance to update its version information.
+        /// </remarks>
         private static void RefreshSdkInfo()
         {
             foreach (var sdkInfo in s_sdkInfo)
@@ -94,6 +114,10 @@ namespace UnicoStudio.UnicoLibs.VersionTracker
             }
         }
 
+        /// <summary>
+        /// Logs the given message as an error in the Unity console, with a red color.
+        /// </summary>
+        /// <param name="message">The message to log.</param>
         private static void LogError(string message)
         {
             Debug.Log("<color.red>" + message + "</color>");
@@ -156,8 +180,7 @@ namespace UnicoStudio.UnicoLibs.VersionTracker
             // If no result, return null
             if (pluginData == null)
             {
-                LogError("LoadPluginData did not return any PluginData! " +
-                               "You may have internet connection problem..");
+                LogError("LoadPluginData did not return any PluginData! You may have internet connection problem..");
                 return null;
             }
 
@@ -416,6 +439,11 @@ namespace UnicoStudio.UnicoLibs.VersionTracker
             return versionInfo;
         }
 
+        /// <summary>
+        /// Finds the type with the given <paramref name="typeFullName"/> in the loaded assemblies.
+        /// </summary>
+        /// <param name="typeFullName">The name of the type to search for.</param>
+        /// <returns>The found type, or <c>null</c> if the type is not found.</returns>
         private static Type FindTypeInAssemblies(string typeFullName)
         {
             if (string.IsNullOrEmpty(typeFullName)) return null;
