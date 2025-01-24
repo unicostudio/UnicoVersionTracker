@@ -120,7 +120,7 @@ namespace UnicoStudio.UnicoLibs.VersionTracker
         /// <param name="message">The message to log.</param>
         private static void LogError(string message)
         {
-            Debug.Log("<color.red>" + message + "</color>");
+            Debug.Log("<color=red>" + message + "</color>");
         }
 
         private static string GetAppLovinVersion(Type appLovinType)
