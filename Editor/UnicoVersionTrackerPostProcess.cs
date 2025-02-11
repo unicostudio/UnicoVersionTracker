@@ -1,4 +1,3 @@
-#if UNITY_EDITOR
 using UnityEditor.Build;
 using UnityEditor.Build.Reporting;
 using UnityEngine;
@@ -18,8 +17,7 @@ namespace UnicoStudio.UnicoLibs.VersionTracker
                 return;
             }
 
-            UnicoVersionExporter.ExportBuildInfo(report.summary);
+            UnicoVersionExporter.ExportBuildInfoAsync(report.summary);
         }
     }
 }
-#endif

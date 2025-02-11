@@ -1,7 +1,7 @@
 {
   "name": "com.unicostudio.versiontracker",
   "displayName": "UnicoStudio VersionTracker",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "documentationUrl": "https://github.com/unicostudio/UnicoVersionTracker",
   "changelogUrl": "https://github.com/unicostudio/UnicoVersionTracker/releases",
   "licensesUrl": "https://github.com/unicostudio/UnicoVersionTracker/blob/master/LICENSE.md",

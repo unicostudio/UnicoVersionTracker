@@ -1,4 +1,3 @@
-#if UNITY_EDITOR
 using System;
 using System.Collections;
 using System.Collections.Generic;
@@ -6,6 +5,7 @@ using System.IO;
 using System.Linq;
 using System.Reflection;
 using System.Text.RegularExpressions;
+using System.Threading.Tasks;
 using System.Xml.Linq;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
@@ -19,6 +19,13 @@ namespace UnicoStudio.UnicoLibs.VersionTracker
     public static class UnicoVersionExporter
     {
         private const string ASSETS = "Assets";
+
+        private static readonly JsonSerializerSettings s_jsonSerializerSettings = new()
+        {
+            NullValueHandling = NullValueHandling.Include,
+            ContractResolver = new DefaultContractResolver { NamingStrategy = new CamelCaseNamingStrategy() },
+            Formatting = Formatting.Indented,
+        };
 
         private static readonly List<SdkInfo> s_sdkInfo = new()
         {
@@ -47,15 +54,28 @@ namespace UnicoStudio.UnicoLibs.VersionTracker
         /// <remarks>
         /// The file path will be <c>Assets/../UnicoVersionTracker/[platform]_BuildInfo.json</c>.
         /// </remarks>
-        public static void ExportBuildInfo(BuildSummary buildSummary)
+        public static async void ExportBuildInfoAsync(BuildSummary buildSummary)
         {
-            var buildInfo = new BuildInfo(buildSummary);
-            var filePath = GetFilePath("", $"{buildSummary.platform}_BuildInfo");
-            var json = JsonConvert.SerializeObject(buildInfo, Formatting.Indented);
+            try
+            {
+                UnicoVersionTrackerProgressBar.StartLoading();
 
-            // Save to file
-            File.WriteAllText(filePath, json);
-            Debug.Log($"Build info saved to {filePath}");
+                var buildInfo = new BuildInfo(buildSummary);
+                var filePath = GetFilePath("", $"{buildSummary.platform}_BuildInfo");
+                var json = JsonConvert.SerializeObject(buildInfo, s_jsonSerializerSettings);
+
+                // Save to file
+                await File.WriteAllTextAsync(filePath, json);
+                Debug.Log($"Build info saved to {filePath}");
+            }
+            catch (Exception ex)
+            {
+                Debug.LogError($"Error writing file: {ex}");
+            }
+            finally
+            {
+                UnicoVersionTrackerProgressBar.StopLoading();
+            }
         }
 
         /// <summary>
@@ -65,15 +85,68 @@ namespace UnicoStudio.UnicoLibs.VersionTracker
         /// The file path will be <c>Assets/../UnicoVersionTracker/SdkInfo.json</c>.
         /// </remarks>
         [MenuItem("UnicoStudio/Export SdkInfo", priority = -1)]
-        private static void ExportSdkInfo()
+        private static async void ExportSdkInfo()
         {
-            RefreshSdkInfo();
-            var filePath = GetFilePath("SdkInfo", "SdkInfo");
-            var json = JsonConvert.SerializeObject(s_sdkInfo, Formatting.Indented);
+            try
+            {
+                UnicoVersionTrackerProgressBar.StartLoading();
 
-            // Save to file
-            File.WriteAllText(filePath, json);
-            Debug.Log($"Sdk info saved to {filePath}");
+                RefreshSdkInfo();
+                var filePath = GetFilePath("SdkInfo", "SdkInfo");
+                var json = JsonConvert.SerializeObject(s_sdkInfo, s_jsonSerializerSettings);
+
+                // Save to file
+                await File.WriteAllTextAsync(filePath, json);
+                Debug.Log($"Sdk info saved to {filePath}");
+            }
+            catch (Exception ex)
+            {
+                Debug.LogError($"Error writing file: {ex}");
+            }
+            finally
+            {
+                UnicoVersionTrackerProgressBar.StopLoading();
+            }
+        }
+
+        /// <summary>
+        /// Asynchronously retrieves and deserializes the saved build information for the specified platform.
+        /// </summary>
+        /// <param name="platform">The target platform for which to retrieve the build information.</param>
+        /// <returns>A <see cref="BuildInfo"/> object containing the saved build details, or null if an error occurs.</returns>
+        public static async Task<BuildInfo> GetSavedBuildInfo(BuildTarget platform)
+        {
+            try
+            {
+                var json = await GetSavedBuildInfoJson(platform);
+                var buildInfo = JsonConvert.DeserializeObject<BuildInfo>(json, s_jsonSerializerSettings);
+                return buildInfo;
+            }
+            catch (Exception ex)
+            {
+                Debug.LogError($"Error reading file: {ex}");
+                return null;
+            }
+        }
+
+        /// <summary>
+        /// Asynchronously reads the saved build information JSON from a file for the specified platform.
+        /// </summary>
+        /// <param name="platform">The target platform for which to retrieve the JSON data.</param>
+        /// <returns>A JSON string containing the build information, or null if an error occurs.</returns>
+        public static async Task<string> GetSavedBuildInfoJson(BuildTarget platform)
+        {
+            try
+            {
+                var filePath = GetFilePath("", $"{platform}_BuildInfo");
+                var json = await File.ReadAllTextAsync(filePath);
+                return json;
+            }
+            catch (Exception ex)
+            {
+                Debug.LogError($"Error reading file: {ex}");
+                return null;
+            }
         }
 
         private static string GetFilePath(string folderPathPostfix, string fileNamePostfix)
@@ -461,11 +534,17 @@ namespace UnicoStudio.UnicoLibs.VersionTracker
             return type;
         }
 
-        [JsonObject(NamingStrategyType = typeof(CamelCaseNamingStrategy))]
-        private record BuildInfo
+        public record BuildInfo
         {
             public ProjectInfo ProjectInfo { get; }
             public List<SdkInfo> SdkInfo { get; }
+
+            [JsonConstructor]
+            public BuildInfo(ProjectInfo projectInfo, List<SdkInfo> sdkInfo)
+            {
+                ProjectInfo = projectInfo;
+                SdkInfo = sdkInfo;
+            }
 
             public BuildInfo(BuildSummary buildSummary)
             {
@@ -475,8 +554,7 @@ namespace UnicoStudio.UnicoLibs.VersionTracker
             }
         }
 
-        [JsonObject(NamingStrategyType = typeof(CamelCaseNamingStrategy))]
-        private record ProjectInfo
+        public record ProjectInfo
         {
             public string Platform { get; }
             public string UnityVersion { get; }
@@ -487,6 +565,28 @@ namespace UnicoStudio.UnicoLibs.VersionTracker
             public string ManagedStrippingLevel { get; }
             public AndroidInfo Android { get; }
             public IOSInfo IOS { get; }
+
+            [JsonConstructor]
+            public ProjectInfo(string platform,
+                string unityVersion,
+                string packageName,
+                string version,
+                string compressionMethod,
+                List<string> graphicsAPIs,
+                string managedStrippingLevel,
+                AndroidInfo android,
+                IOSInfo ios)
+            {
+                Platform = platform;
+                UnityVersion = unityVersion;
+                PackageName = packageName;
+                Version = version;
+                CompressionMethod = compressionMethod;
+                GraphicsAPIs = graphicsAPIs;
+                ManagedStrippingLevel = managedStrippingLevel;
+                Android = android;
+                IOS = ios;
+            }
 
             public ProjectInfo(BuildSummary buildSummary)
             {
@@ -502,18 +602,45 @@ namespace UnicoStudio.UnicoLibs.VersionTracker
                 if (buildSummary.platform == BuildTarget.iOS) IOS = new IOSInfo();
             }
 
-            [JsonObject(NamingStrategyType = typeof(CamelCaseNamingStrategy))]
             public record AndroidInfo
             {
-                public string BundleVersionCode { get; } = PlayerSettings.Android.bundleVersionCode.ToString();
-                public string MinSdkVersion { get; } = PlayerSettings.Android.minSdkVersion.ToString();
-                public string TargetSdkVersion { get; } = PlayerSettings.Android.targetSdkVersion.ToString();
+                public int BundleVersionCode { get; }
+                public int MinSdkVersion { get; }
+                public int TargetSdkVersion { get; }
+
+                [JsonConstructor]
+                public AndroidInfo(int bundleVersionCode, int minSdkVersion, int targetSdkVersion)
+                {
+                    BundleVersionCode = bundleVersionCode;
+                    MinSdkVersion = minSdkVersion;
+                    TargetSdkVersion = targetSdkVersion;
+                }
+
+                public AndroidInfo()
+                {
+                    BundleVersionCode = PlayerSettings.Android.bundleVersionCode;
+                    MinSdkVersion = (int)PlayerSettings.Android.minSdkVersion;
+                    TargetSdkVersion = (int)PlayerSettings.Android.targetSdkVersion;
+                }
             }
 
-            [JsonObject(NamingStrategyType = typeof(CamelCaseNamingStrategy))]
             public record IOSInfo
             {
-                public string TargetOSVersion { get; } = PlayerSettings.iOS.targetOSVersionString;
+                public int BuildNumber { get; }
+                public string TargetOSVersion { get; }
+
+                [JsonConstructor]
+                public IOSInfo(int buildNumber, string targetOSVersion)
+                {
+                    BuildNumber = buildNumber;
+                    TargetOSVersion = targetOSVersion;
+                }
+
+                public IOSInfo()
+                {
+                    BuildNumber = int.Parse(PlayerSettings.iOS.buildNumber);
+                    TargetOSVersion = PlayerSettings.iOS.targetOSVersionString;
+                }
             }
 
             private static string GetCompressionMethod(BuildOptions buildOptions)
@@ -533,13 +660,20 @@ namespace UnicoStudio.UnicoLibs.VersionTracker
             }
         }
 
-        [JsonObject(MemberSerialization.OptIn, NamingStrategyType = typeof(CamelCaseNamingStrategy))]
-        private record SdkInfo
+        [JsonObject(MemberSerialization.OptIn)]
+        public record SdkInfo
         {
-            [JsonProperty] private string Name { get; }
-            [JsonProperty] private string Version { get; set; }
-            [JsonProperty] private List<VersionInfo> PluginVersionInfo { get; set; }
+            [JsonProperty] public string Name { get; private set; }
+            [JsonProperty] public string Version { get; private set; }
+            [JsonProperty] public List<VersionInfo> PluginVersionInfo { get; private set; }
             private SdkVersionGetter VersionGetter { get; }
+
+            [JsonConstructor]
+            public SdkInfo(string name, string version)
+            {
+                Name = name;
+                Version = version;
+            }
 
             public SdkInfo(string name, SdkVersionGetter versionGetter)
             {
@@ -559,7 +693,7 @@ namespace UnicoStudio.UnicoLibs.VersionTracker
             }
         }
 
-        private record SdkVersionGetter(
+        public record SdkVersionGetter(
             string TypeFullName1,
             Func<Type, string> Getter1,
             string TypeFullName2 = null,
@@ -584,12 +718,10 @@ namespace UnicoStudio.UnicoLibs.VersionTracker
             }
         }
 
-        [JsonObject(NamingStrategyType = typeof(CamelCaseNamingStrategy))]
-        private record VersionInfo(string Name, string Version)
+        public record VersionInfo(string Name, string Version)
         {
             public string Name { get; private set; } = Name;
             public string Version { get; private set; } = Version;
         }
     }
 }
-#endif
