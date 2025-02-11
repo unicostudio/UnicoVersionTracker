@@ -2,6 +2,10 @@
 
 All notable changes to this package will be documented in this file.
 
+## [1.1.1] - 2025-02-11
+
+* Documentation and Changelog urls are updated
+
 ## [1.1.0] - 2025-02-11
 
 * `UnicoVersionTrackerProgressBar` is implemented
