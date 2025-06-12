@@ -13,6 +13,7 @@ using Newtonsoft.Json.Serialization;
 using UnityEditor;
 using UnityEditor.Build.Reporting;
 using UnityEngine;
+using UnityEngine.Rendering;
 
 namespace UnicoStudio.UnicoLibs.VersionTracker
 {
@@ -29,6 +30,8 @@ namespace UnicoStudio.UnicoLibs.VersionTracker
 
         private static readonly List<SdkInfo> s_sdkInfo = new()
         {
+            new SdkInfo("UnicoAPIClient",
+                new SdkVersionGetter(null, GetUnicoAPIClientVersion)),
             new SdkInfo("AppLovinMAX",
                 new SdkVersionGetter("MaxSdk", GetAppLovinVersion, "AppLovinMax.Scripts.IntegrationManager.Editor.AppLovinIntegrationManager", GetAppLovinVersions)),
             new SdkInfo("GoogleAdMob",
@@ -512,6 +515,36 @@ namespace UnicoStudio.UnicoLibs.VersionTracker
             return versionInfo;
         }
 
+        private static string GetUnicoAPIClientVersion(Type _)
+        {
+            try
+            {
+                var packagesConfigPath = Path.Combine(ASSETS, "packages.config");
+                if (!File.Exists(packagesConfigPath))
+                {
+                    LogError("packages.config not found!");
+                    return null;
+                }
+
+                var xmlDocument = XDocument.Load(packagesConfigPath);
+                var unicoApiClientPackage = xmlDocument.Descendants("package")
+                    .FirstOrDefault(node => node.Attribute("id")?.Value == "unicoapiclient");
+
+                if (unicoApiClientPackage != null)
+                {
+                    return unicoApiClientPackage.Attribute("version")?.Value;
+                }
+
+                LogError("UnicoAPIClient package not found in packages.config!");
+                return null;
+            }
+            catch (Exception ex)
+            {
+                LogError($"Failed to get UnicoAPIClient version: {ex.Message}");
+                return null;
+            }
+        }
+
         /// <summary>
         /// Finds the type with the given <paramref name="typeFullName"/> in the loaded assemblies.
         /// </summary>
@@ -563,6 +596,7 @@ namespace UnicoStudio.UnicoLibs.VersionTracker
             public string CompressionMethod { get; }
             public List<string> GraphicsAPIs { get; }
             public string ManagedStrippingLevel { get; }
+            public string RenderPipeline { get; }
             public AndroidInfo Android { get; }
             public IOSInfo IOS { get; }
 
@@ -574,6 +608,7 @@ namespace UnicoStudio.UnicoLibs.VersionTracker
                 string compressionMethod,
                 List<string> graphicsAPIs,
                 string managedStrippingLevel,
+                string renderPipeline,
                 AndroidInfo android,
                 IOSInfo ios)
             {
@@ -584,6 +619,7 @@ namespace UnicoStudio.UnicoLibs.VersionTracker
                 CompressionMethod = compressionMethod;
                 GraphicsAPIs = graphicsAPIs;
                 ManagedStrippingLevel = managedStrippingLevel;
+                RenderPipeline = renderPipeline;
                 Android = android;
                 IOS = ios;
             }
@@ -597,6 +633,7 @@ namespace UnicoStudio.UnicoLibs.VersionTracker
                 CompressionMethod = GetCompressionMethod(buildSummary.options);
                 GraphicsAPIs = GetGraphicsAPI(buildSummary.platform);
                 ManagedStrippingLevel = GetManagedStrippingLevel(buildSummary.platformGroup);
+                RenderPipeline = GetRenderPipeline();
 
                 if (buildSummary.platform == BuildTarget.Android) Android = new AndroidInfo();
                 if (buildSummary.platform == BuildTarget.iOS) IOS = new IOSInfo();
@@ -657,6 +694,31 @@ namespace UnicoStudio.UnicoLibs.VersionTracker
             private static string GetManagedStrippingLevel(BuildTargetGroup buildTargetGroup)
             {
                 return PlayerSettings.GetManagedStrippingLevel(buildTargetGroup).ToString();
+            }
+
+            private static string GetRenderPipeline()
+            {
+                try
+                {
+                    // Get the current render pipeline asset from Graphics Settings
+                    var renderPipelineAsset = GraphicsSettings.currentRenderPipeline;
+                    if (!renderPipelineAsset) return "Built-in";
+
+                    // Get the type name of the render pipeline asset
+                    var typeName = renderPipelineAsset.GetType().Name;
+
+                    return typeName switch
+                    {
+                        "UniversalRenderPipelineAsset" => "URP",
+                        "HDRenderPipelineAsset" => "HDRP",
+                        _ => $"Custom ({typeName})"
+                    };
+                }
+                catch (Exception ex)
+                {
+                    Debug.LogWarning($"Failed to determine render pipeline: {ex.Message}");
+                    return "Unknown";
+                }
             }
         }
 
