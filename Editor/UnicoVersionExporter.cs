@@ -35,7 +35,7 @@ namespace UnicoStudio.UnicoLibs.VersionTracker
             new SdkInfo("AppLovinMAX",
                 new SdkVersionGetter("MaxSdk", GetAppLovinVersion, "AppLovinMax.Scripts.IntegrationManager.Editor.AppLovinIntegrationManager", GetAppLovinVersions)),
             new SdkInfo("GoogleAdMob",
-                new SdkVersionGetter("GoogleMobileAds.Api.MobileAds", GetAdMobVersion)),
+                new SdkVersionGetter("GoogleMobileAds.Api.MobileAds", GetAdMobVersion, GetAdMobMediationVersions)),
             new SdkInfo("GoogleImmersiveAds",
                 new SdkVersionGetter("GoogleMobileAds.Api.MobileAds", GetGoogleImmersiveAdsVersion)),
             new SdkInfo("Odeeo",
@@ -64,7 +64,7 @@ namespace UnicoStudio.UnicoLibs.VersionTracker
                 UnicoVersionTrackerProgressBar.StartLoading();
 
                 var buildInfo = new BuildInfo(buildSummary);
-                var filePath = GetFilePath("", $"{buildSummary.platform}_BuildInfo");
+                var filePath = GetFilePath(string.Empty, $"{buildSummary.platform}_BuildInfo");
                 var json = JsonConvert.SerializeObject(buildInfo, s_jsonSerializerSettings);
 
                 // Save to file
@@ -141,7 +141,7 @@ namespace UnicoStudio.UnicoLibs.VersionTracker
         {
             try
             {
-                var filePath = GetFilePath("", $"{platform}_BuildInfo");
+                var filePath = GetFilePath(string.Empty, $"{platform}_BuildInfo");
                 var json = await File.ReadAllTextAsync(filePath);
                 return json;
             }
@@ -171,7 +171,7 @@ namespace UnicoStudio.UnicoLibs.VersionTracker
         private static string MakeFileNameFriendly(string fileName, bool removeSpaces = true)
         {
             var newName = Regex.Replace(fileName, $"[{Regex.Escape(new string(Path.GetInvalidFileNameChars()))}]", "-");
-            if (removeSpaces) newName = newName.Replace(" ", "");
+            if (removeSpaces) newName = newName.Replace(" ", string.Empty);
             return newName;
         }
 
@@ -356,8 +356,17 @@ namespace UnicoStudio.UnicoLibs.VersionTracker
 
         private static string GetAdMobVersion(Type _)
         {
-            var folderPath = Path.Combine(ASSETS, "GoogleMobileAds");
-            var files = Directory.GetFiles(folderPath, "GoogleMobileAds_version*.txt");
+            // First, find the GoogleMobileAds folder anywhere in the Assets folder
+            var googleMobileAdsPath = Directory.GetDirectories(ASSETS, "*GoogleMobileAds", SearchOption.AllDirectories)
+                .FirstOrDefault();
+
+            if (string.IsNullOrEmpty(googleMobileAdsPath))
+            {
+                LogError("GoogleMobileAds folder not found!");
+                return null;
+            }
+
+            var files = Directory.GetFiles(googleMobileAdsPath, "GoogleMobileAds_version*.txt");
             if (files.Length <= 0)
             {
                 LogError("AdMob Unity version file not found!");
@@ -367,16 +376,116 @@ namespace UnicoStudio.UnicoLibs.VersionTracker
             var fileName = Path.GetFileNameWithoutExtension(files[0]);
 
             // Extract version from filename (e.g., "GoogleMobileAds_version-9.1.0_manifest")
-            var version = fileName.Split('-')[1].Replace("_manifest", ""); // "9.1.0"
+            var version = fileName.Split('-')[1].Replace("_manifest", string.Empty); // "9.1.0"
             return version;
+        }
+
+        private static List<VersionInfo> GetAdMobMediationVersions(Type _)
+        {
+            // First, find the GoogleMobileAds/Mediation folder anywhere in the Assets folder
+            var mediationFolderPath = Directory.GetDirectories(ASSETS, "*GoogleMobileAds", SearchOption.AllDirectories)
+                .Where(dir => Directory.Exists(Path.Combine(dir, "Mediation")))
+                .Select(dir => Path.Combine(dir, "Mediation"))
+                .FirstOrDefault();
+
+            if (string.IsNullOrEmpty(mediationFolderPath))
+            {
+                LogError("GoogleMobileAds/Mediation folder not found!");
+                return null;
+            }
+
+            var versionInfo = new List<VersionInfo>();
+
+            try
+            {
+                // Get all mediation adapter directories
+                var adapterDirectories = Directory.GetDirectories(mediationFolderPath);
+
+                foreach (var adapterDir in adapterDirectories)
+                {
+                    var adapterName = Path.GetFileName(adapterDir);
+                    var editorPath = Path.Combine(adapterDir, "Editor");
+
+                    if (!Directory.Exists(editorPath)) continue;
+
+                    // Look for the mediation dependencies XML file
+                    var dependenciesFiles = Directory.GetFiles(editorPath, "*MediationDependencies.xml");
+
+                    if (dependenciesFiles.Length == 0)
+                    {
+                        Debug.Log($"AdMob mediation dependencies file not found for {adapterName} in: {editorPath}");
+                        continue;
+                    }
+
+                    var dependenciesFile = dependenciesFiles[0]; // Use the first match
+
+                    try
+                    {
+                        var xmlDocument = XDocument.Load(dependenciesFile);
+
+                        // Extract Android version from androidPackage spec
+                        var androidPackageNode = xmlDocument.Descendants("androidPackage").FirstOrDefault();
+                        var spec = androidPackageNode?.Attribute("spec")?.Value;
+                        string androidVersion = null;
+                        if (!string.IsNullOrEmpty(spec))
+                        {
+                            // Extract version from spec like "com.google.ads.mediation:applovin:12.6.1.0"
+                            var parts = spec.Split(':');
+                            androidVersion = parts.Length >= 1 ? parts[^1] : null;
+                        }
+
+                        // Extract iOS version from iosPod version
+                        var iosPodNode = xmlDocument.Descendants("iosPod").FirstOrDefault();
+                        var iosVersion = iosPodNode?.Attribute("version")?.Value;
+
+                        // Combine Android and iOS versions in the specified format
+                        string combinedVersion = null;
+
+                        if (!string.IsNullOrEmpty(androidVersion) && !string.IsNullOrEmpty(iosVersion))
+                            combinedVersion = $"android_{androidVersion}_ios_{iosVersion}";
+                        else if (!string.IsNullOrEmpty(androidVersion))
+                            combinedVersion = $"android_{androidVersion}";
+                        else if (!string.IsNullOrEmpty(iosVersion))
+                            combinedVersion = $"ios_{iosVersion}";
+
+                        if (!string.IsNullOrEmpty(combinedVersion))
+                            versionInfo.Add(new VersionInfo(adapterName, combinedVersion));
+                        else
+                            LogError($"Failed to extract version for AdMob {adapterName} mediation adapter!");
+                    }
+                    catch (Exception ex)
+                    {
+                        LogError($"Error parsing mediation dependencies for {adapterName}: {ex.Message}");
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                LogError($"Error reading AdMob mediation directories: {ex.Message}");
+                return null;
+            }
+
+            return versionInfo.Any() ? versionInfo : null;
         }
 
         private static string GetGoogleImmersiveAdsVersion(Type _)
         {
-            var dependenciesPath = Path.Combine(ASSETS, "GoogleMobileAdsNative/Editor/GoogleMobileAdsNativeDependencies.xml");
+            // First, find the GoogleMobileAdsNative/Editor folder anywhere in the Assets folder
+            var googleMobileAdsNativeEditorPath = Directory.GetDirectories(ASSETS, "*GoogleMobileAdsNative", SearchOption.AllDirectories)
+                .Where(dir => Directory.Exists(Path.Combine(dir, "Editor")))
+                .Select(dir => Path.Combine(dir, "Editor"))
+                .FirstOrDefault();
+
+            if (string.IsNullOrEmpty(googleMobileAdsNativeEditorPath))
+            {
+                LogError("GoogleMobileAdsNative/Editor folder not found!");
+                return null;
+            }
+
+            var dependenciesPath = Path.Combine(googleMobileAdsNativeEditorPath, "GoogleMobileAdsNativeDependencies.xml");
             if (!File.Exists(dependenciesPath))
             {
-                LogError("Google immersive ads version file not found!");
+                LogError("Google immersive ads dependencies file not found!");
                 return null;
             }
 
@@ -427,7 +536,17 @@ namespace UnicoStudio.UnicoLibs.VersionTracker
 
         private static string GetAdjustVersion(Type _)
         {
-            var packageJsonPath = Path.Combine(ASSETS, "Adjust/package.json");
+            // First, find the Adjust folder anywhere in the Assets folder
+            var adjustPath = Directory.GetDirectories(ASSETS, "*Adjust", SearchOption.AllDirectories)
+                .FirstOrDefault();
+
+            if (string.IsNullOrEmpty(adjustPath))
+            {
+                LogError("Adjust folder not found!");
+                return null;
+            }
+
+            var packageJsonPath = Path.Combine(adjustPath, "package.json");
             if (!File.Exists(packageJsonPath))
             {
                 LogError("Adjust package.json not found!");
@@ -458,10 +577,22 @@ namespace UnicoStudio.UnicoLibs.VersionTracker
 
         private static string GetFirebaseVersion(Type _)
         {
-            var dependenciesPath = Path.Combine(ASSETS, "Firebase/Editor/AppDependencies.xml");
+            // First, find the Firebase/Editor folder anywhere in the Assets folder
+            var firebaseEditorPath = Directory.GetDirectories(ASSETS, "*Firebase", SearchOption.AllDirectories)
+                .Where(dir => Directory.Exists(Path.Combine(dir, "Editor")))
+                .Select(dir => Path.Combine(dir, "Editor"))
+                .FirstOrDefault();
+
+            if (string.IsNullOrEmpty(firebaseEditorPath))
+            {
+                LogError("Firebase/Editor folder not found!");
+                return null;
+            }
+
+            var dependenciesPath = Path.Combine(firebaseEditorPath, "AppDependencies.xml");
             if (!File.Exists(dependenciesPath))
             {
-                LogError("Firebase version file not found!");
+                LogError("Firebase AppDependencies.xml file not found!");
                 return null;
             }
 
@@ -493,11 +624,22 @@ namespace UnicoStudio.UnicoLibs.VersionTracker
 
         private static List<VersionInfo> GetFirebaseVersions(Type _)
         {
-            var folderPath = Path.Combine(ASSETS, "Firebase/Editor");
-            var files = Directory.GetFiles(folderPath, "Firebase*_version*.txt");
+            // First, find the Firebase/Editor folder anywhere in the Assets folder
+            var firebaseEditorPath = Directory.GetDirectories(ASSETS, "*Firebase", SearchOption.AllDirectories)
+                .Where(dir => Directory.Exists(Path.Combine(dir, "Editor")))
+                .Select(dir => Path.Combine(dir, "Editor"))
+                .FirstOrDefault();
+
+            if (string.IsNullOrEmpty(firebaseEditorPath))
+            {
+                LogError("Firebase/Editor folder not found!");
+                return null;
+            }
+
+            var files = Directory.GetFiles(firebaseEditorPath, "Firebase*_version*.txt");
             if (files.Length <= 0)
             {
-                LogError("Firebase plugin version file not found!");
+                LogError("Firebase plugin version files not found!");
                 return null;
             }
 
@@ -507,8 +649,8 @@ namespace UnicoStudio.UnicoLibs.VersionTracker
                 var fileName = Path.GetFileNameWithoutExtension(file);
                 var split = fileName.Split('-');
 
-                var name = split[0].Replace("_version", ""); // "FirebaseAnalytics"
-                var version = split[1].Replace("_manifest", ""); // "12.1.0"
+                var name = split[0].Replace("_version", string.Empty); // "FirebaseAnalytics"
+                var version = split[1].Replace("_manifest", string.Empty); // "12.1.0"
                 versionInfo.Add(new VersionInfo(name, version));
             }
 

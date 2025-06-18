@@ -2,6 +2,24 @@
 
 All notable changes to this package will be documented in this file.
 
+## [1.3.0] - 2025-06-18
+
+* **NEW FEATURE**: Added AdMob Mediation adapter version tracking
+  * Automatically detects and reports all installed AdMob mediation adapters
+  * Extracts version information from mediation dependency XML files
+  * Combines Android and iOS versions in format: "android_X.X.X_ios_Y.Y.Y"
+  * Added `GetAdMobMediationVersions()` method to scan mediation adapters
+  * Enhanced `GoogleAdMob` SDK info to include detailed mediation adapter versions
+  * Supports all standard mediation adapters (AppLovin, IronSource, MetaAudienceNetwork, etc.)
+
+* **IMPROVEMENT**: Enhanced directory search patterns for flexible project structures
+  * Updated all SDK detection methods to use flexible directory search patterns
+  * Changed from hardcoded paths to pattern-based searches (e.g., `*GoogleMobileAds`, `*Firebase`)
+  * Improved compatibility with diverse Unity project folder organizations
+  * Fixed issues where SDKs installed in non-standard locations weren't detected
+  * Applied consistent search patterns across AdMob, Firebase, Adjust, and other SDK detection methods
+  * Optimized performance while maintaining robust detection capabilities
+
 ## [1.2.0] - 2025-06-12
 
 * **NEW FEATURE**: Added render pipeline detection to build information
