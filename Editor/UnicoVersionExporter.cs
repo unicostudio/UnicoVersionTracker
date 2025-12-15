@@ -11,6 +11,7 @@ using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using Newtonsoft.Json.Serialization;
 using UnityEditor;
+using UnityEditor.Build;
 using UnityEditor.Build.Reporting;
 using UnityEngine;
 using UnityEngine.Rendering;
@@ -28,6 +29,80 @@ namespace UnicoStudio.UnicoLibs.VersionTracker
             Formatting = Formatting.Indented,
         };
 
+        // Static network IDs - these should never change even if network names change
+        private static readonly Dictionary<string, string> s_networkIdMapping = new()
+        {
+            // AppLovin MAX Networks
+            { "AppLovin", "_applovin_" },
+            { "AdColony", "_adcolony_" },
+            { "Amazon", "_amazon_" },
+            { "BidMachine", "_bidmachine_" },
+            { "BIGO Ads", "_bigo_ads_" },
+            { "Chartboost", "_chartboost_" },
+            { "CSJ", "_csj_" },
+            { "DT Exchange", "_dt_exchange_" },
+            { "Facebook", "_facebook_" },
+            { "Fyber", "_fyber_" },
+            { "Google AdMob", "_google_admob_" },
+            { "Google Ad Manager", "_google_ad_manager_" },
+            { "HyprMX", "_hyprmx_" },
+            { "InMobi", "_inmobi_" },
+            { "ironSource", "_ironsource_" },
+            { "Liftoff Monetize", "_liftoff_monetize_" },
+            { "LINE", "_line_" },
+            { "Line", "_line_" },
+            { "LinkedIn", "_linkedin_" },
+            { "Maio", "_maio_" },
+            { "Mintegral", "_mintegral_" },
+            { "MobileFuse", "_mobilefuse_" },
+            { "Moloco", "_moloco_" },
+            { "MyTarget", "_mytarget_" },
+            { "Nend", "_nend_" },
+            { "Ogury", "_ogury_" },
+            { "Pangle", "_pangle_" },
+            { "PubMatic", "_pubmatic_" },
+            { "Smaato", "_smaato_" },
+            { "Tapjoy", "_tapjoy_" },
+            { "Tencent", "_tencent_" },
+            { "Unity Ads", "_unity_ads_" },
+            { "Verizon", "_verizon_" },
+            { "Verve", "_verve_" },
+            { "VK Ad Network", "_vk_ad_network_" },
+            { "Vungle", "_vungle_" },
+            { "Yandex", "_yandex_" },
+            { "YSO Network", "_yso_network_" },
+            
+            // AdMob Mediation Adapters (can have different naming than MAX)
+            { "Meta", "_meta_" },
+            { "MetaAudienceNetwork", "_meta_" },
+            { "UnityAds", "_unity_ads_" },
+            { "IronSource", "_ironsource_" },
+            { "Liftoff", "_liftoff_" },
+            { "Digital Turbine", "_digital_turbine_" },
+            { "DTExchange", "_dt_exchange_" },
+            { "i-mobile", "_i_mobile_" },
+            { "LiftoffMonetize", "_liftoff_monetize_" },
+            
+            // Firebase
+            { "FirebaseAnalytics", "_firebase_analytics_" },
+            { "FirebaseAuth", "_firebase_auth_" },
+            { "FirebaseCore", "_firebase_core_" },
+            { "FirebaseCrashlytics", "_firebase_crashlytics_" },
+            { "FirebaseDatabase", "_firebase_database_" },
+            { "FirebaseDynamicLinks", "_firebase_dynamic_links_" },
+            { "FirebaseFirestore", "_firebase_firestore_" },
+            { "FirebaseFunctions", "_firebase_functions_" },
+            { "FirebaseInstallations", "_firebase_installations_" },
+            { "FirebaseMessaging", "_firebase_messaging_" },
+            { "FirebaseRemoteConfig", "_firebase_remote_config_" },
+            { "FirebaseStorage", "_firebase_storage_" },
+            
+            // Google ODM
+            { "AdjustGoogleOdm", "_adjust_google_odm_" },
+            { "GoogleAdsOnDeviceConversion", "_google_ads_on_device_conversion_" },
+        };
+
+
         private static readonly List<SdkInfo> s_sdkInfo = new()
         {
             new SdkInfo("UnicoAPIClient",
@@ -38,6 +113,8 @@ namespace UnicoStudio.UnicoLibs.VersionTracker
                 new SdkVersionGetter("GoogleMobileAds.Api.MobileAds", GetAdMobVersion, GetAdMobMediationVersions)),
             new SdkInfo("GoogleImmersiveAds",
                 new SdkVersionGetter("GoogleMobileAds.Api.MobileAds", GetGoogleImmersiveAdsVersion)),
+            new SdkInfo("GoogleODM",
+                new SdkVersionGetter(null, null, null, GetGoogleOdmVersionsAsList)),
             new SdkInfo("Odeeo",
                 new SdkVersionGetter("Odeeo.OdeeoSdk", GetOdeeoVersion)),
             new SdkInfo("AmazonSdk",
@@ -105,6 +182,40 @@ namespace UnicoStudio.UnicoLibs.VersionTracker
             catch (Exception ex)
             {
                 Debug.LogError($"Error writing file: {ex}");
+            }
+            finally
+            {
+                UnicoVersionTrackerProgressBar.StopLoading();
+            }
+        }
+
+        /// <summary>
+        /// Exports the test build information to a json file from Unity Editor.
+        /// </summary>
+        /// <remarks>
+        /// The file path will be <c>Assets/../UnicoVersionTracker/[platform]_TestBuildInfo.json</c>.
+        /// </remarks>
+        [MenuItem("UnicoStudio/Export Test BuildInfo", priority = 0)]
+        private static async void ExportBuildInfoFromEditor()
+        {
+            try
+            {
+                UnicoVersionTrackerProgressBar.StartLoading();
+
+                // Get the current build target
+                var currentBuildTarget = EditorUserBuildSettings.activeBuildTarget;
+                
+                var buildInfo = new BuildInfo(currentBuildTarget);
+                var filePath = GetFilePath(string.Empty, $"{currentBuildTarget}_TestBuildInfo");
+                var json = JsonConvert.SerializeObject(buildInfo, s_jsonSerializerSettings);
+
+                // Save to file
+                await File.WriteAllTextAsync(filePath, json);
+                Debug.Log($"Test Build info saved to {filePath}");
+            }
+            catch (Exception ex)
+            {
+                Debug.LogError($"Error writing test build info file: {ex}");
             }
             finally
             {
@@ -345,12 +456,31 @@ namespace UnicoStudio.UnicoLibs.VersionTracker
                     ?.GetField("CurrentVersions", BindingFlags.Public | BindingFlags.Instance)
                     ?.GetValue(networkObject);
 
-                var version = versionsField
-                    ?.GetType().GetField("Unity", BindingFlags.Public | BindingFlags.Instance)
+                var versionsType = versionsField?.GetType();
+                var unityVersion = versionsType?.GetField("Unity", BindingFlags.Public | BindingFlags.Instance)
                     ?.GetValue(versionsField)
                     ?.ToString();
 
-                return new VersionInfo(name, version);
+                var androidVersion = versionsType?.GetField("Android", BindingFlags.Public | BindingFlags.Instance)
+                    ?.GetValue(versionsField)
+                    ?.ToString();
+
+                var iosVersion = versionsType?.GetField("Ios", BindingFlags.Public | BindingFlags.Instance)
+                    ?.GetValue(versionsField)
+                    ?.ToString();
+
+                // Create combined version string
+                string combinedVersion = unityVersion;
+                if (!string.IsNullOrEmpty(androidVersion) && !string.IsNullOrEmpty(iosVersion))
+                    combinedVersion = $"android_{androidVersion}_ios_{iosVersion}";
+                else if (!string.IsNullOrEmpty(androidVersion))
+                    combinedVersion = $"android_{androidVersion}";
+                else if (!string.IsNullOrEmpty(iosVersion))
+                    combinedVersion = $"ios_{iosVersion}";
+
+                // Get network ID from dictionary only
+                s_networkIdMapping.TryGetValue(name, out var networkId);
+                return new VersionInfo(networkId, name, combinedVersion, androidVersion, iosVersion);
             }
         }
 
@@ -449,7 +579,11 @@ namespace UnicoStudio.UnicoLibs.VersionTracker
                             combinedVersion = $"ios_{iosVersion}";
 
                         if (!string.IsNullOrEmpty(combinedVersion))
-                            versionInfo.Add(new VersionInfo(adapterName, combinedVersion));
+                        {
+                            // Get network ID from dictionary only
+                            s_networkIdMapping.TryGetValue(adapterName, out var networkId);
+                            versionInfo.Add(new VersionInfo(networkId, adapterName, combinedVersion, androidVersion, iosVersion));
+                        }
                         else
                             LogError($"Failed to extract version for AdMob {adapterName} mediation adapter!");
                     }
@@ -651,7 +785,10 @@ namespace UnicoStudio.UnicoLibs.VersionTracker
 
                 var name = split[0].Replace("_version", string.Empty); // "FirebaseAnalytics"
                 var version = split[1].Replace("_manifest", string.Empty); // "12.1.0"
-                versionInfo.Add(new VersionInfo(name, version));
+                // Get network ID from dictionary only
+                s_networkIdMapping.TryGetValue(name, out var networkId);
+                // Firebase versions are the same for both platforms
+                versionInfo.Add(new VersionInfo(networkId, name, version, version, version));
             }
 
             return versionInfo;
@@ -683,6 +820,150 @@ namespace UnicoStudio.UnicoLibs.VersionTracker
             catch (Exception ex)
             {
                 LogError($"Failed to get UnicoAPIClient version: {ex.Message}");
+                return null;
+            }
+        }
+
+        private static string GetGameId()
+        {
+            try
+            {
+                var unicoConfigType = FindTypeInAssemblies("Unico.Core.Config.UnicoConfig");
+                if (unicoConfigType == null)
+                {
+                    LogError("UnicoConfig type not found!");
+                    return null;
+                }
+
+                var instanceProperty = unicoConfigType.GetProperty("Instance", BindingFlags.Public | BindingFlags.Static);
+                if (instanceProperty == null)
+                {
+                    LogError("UnicoConfig.Instance property not found!");
+                    return null;
+                }
+
+                var instance = instanceProperty.GetValue(null);
+                if (instance == null)
+                {
+                    LogError("UnicoConfig.Instance is null!");
+                    return null;
+                }
+
+                var gameIdProperty = unicoConfigType.GetProperty("GameId", BindingFlags.Public | BindingFlags.Instance);
+                if (gameIdProperty == null)
+                {
+                    LogError("UnicoConfig.GameId property not found!");
+                    return null;
+                }
+
+                return gameIdProperty.GetValue(instance)?.ToString();
+            }
+            catch (Exception ex)
+            {
+                LogError($"Failed to get GameId from UnicoConfig: {ex.Message}");
+                return null;
+            }
+        }
+
+        private static MediationTypes GetMediationTypes()
+        {
+            try
+            {
+                var adManagerSettingsType = FindTypeInAssemblies("Unico.Ads.Core.AdManagerSettings");
+                if (adManagerSettingsType == null)
+                {
+                    LogError("AdManagerSettings type not found!");
+                    return null;
+                }
+
+                // Find the AdManagerSettings asset
+                var assets = AssetDatabase.FindAssets($"t:{adManagerSettingsType.Name}");
+                if (assets.Length == 0)
+                {
+                    LogError("AdManagerSettings asset not found!");
+                    return null;
+                }
+
+                var assetPath = AssetDatabase.GUIDToAssetPath(assets[0]);
+                var adManagerSettingsInstance = AssetDatabase.LoadAssetAtPath(assetPath, adManagerSettingsType);
+                
+                if (adManagerSettingsInstance == null)
+                {
+                    LogError("Failed to load AdManagerSettings asset!");
+                    return null;
+                }
+
+                var androidMediationProperty = adManagerSettingsType.GetProperty("AndroidMediation", BindingFlags.Public | BindingFlags.Instance);
+                var iosMediationProperty = adManagerSettingsType.GetProperty("IosMediation", BindingFlags.Public | BindingFlags.Instance);
+
+                if (androidMediationProperty == null || iosMediationProperty == null)
+                {
+                    LogError("Mediation properties not found in AdManagerSettings!");
+                    return null;
+                }
+
+                var androidMediation = androidMediationProperty.GetValue(adManagerSettingsInstance)?.ToString();
+                var iosMediation = iosMediationProperty.GetValue(adManagerSettingsInstance)?.ToString();
+
+                return new MediationTypes(androidMediation, iosMediation);
+            }
+            catch (Exception ex)
+            {
+                LogError($"Failed to get mediation types from AdManagerSettings: {ex.Message}");
+                return null;
+            }
+        }
+
+        private static List<VersionInfo> GetGoogleOdmVersionsAsList(Type _)
+        {
+            try
+            {
+                // Find the AdjustGoogleODMDependencies.xml file
+                var xmlFiles = Directory.GetFiles(ASSETS, "AdjustGoogleODMDependencies.xml", SearchOption.AllDirectories);
+                if (xmlFiles.Length == 0)
+                {
+                    LogError("AdjustGoogleODMDependencies.xml file not found!");
+                    return null;
+                }
+
+                var xmlPath = xmlFiles[0];
+                var xmlDocument = XDocument.Load(xmlPath);
+
+                // Find the iosPod elements
+                var adjustGoogleOdmPod = xmlDocument.Descendants("iosPod")
+                    .FirstOrDefault(pod => pod.Attribute("name")?.Value.Contains("Adjust/AdjustGoogleOdm") == true);
+
+                var googleAdsOnDeviceConversionPod = xmlDocument.Descendants("iosPod")
+                    .FirstOrDefault(pod => pod.Attribute("name")?.Value.Contains("GoogleAdsOnDeviceConversion") == true);
+
+                var adjustGoogleOdmVersion = adjustGoogleOdmPod?.Attribute("version")?.Value;
+                var googleAdsOnDeviceConversionVersion = googleAdsOnDeviceConversionPod?.Attribute("version")?.Value;
+
+                if (string.IsNullOrEmpty(adjustGoogleOdmVersion) && string.IsNullOrEmpty(googleAdsOnDeviceConversionVersion))
+                {
+                    LogError("Failed to extract Google ODM versions from AdjustGoogleODMDependencies.xml!");
+                    return null;
+                }
+
+                var versionInfo = new List<VersionInfo>();
+                
+                if (!string.IsNullOrEmpty(adjustGoogleOdmVersion))
+                {
+                    s_networkIdMapping.TryGetValue("AdjustGoogleOdm", out var adjustId);
+                    versionInfo.Add(new VersionInfo(adjustId, "AdjustGoogleOdm", adjustGoogleOdmVersion, null, adjustGoogleOdmVersion));
+                }
+                
+                if (!string.IsNullOrEmpty(googleAdsOnDeviceConversionVersion))
+                {
+                    s_networkIdMapping.TryGetValue("GoogleAdsOnDeviceConversion", out var googleId);
+                    versionInfo.Add(new VersionInfo(googleId, "GoogleAdsOnDeviceConversion", googleAdsOnDeviceConversionVersion, null, googleAdsOnDeviceConversionVersion));
+                }
+
+                return versionInfo.Count > 0 ? versionInfo : null;
+            }
+            catch (Exception ex)
+            {
+                LogError($"Failed to get Google ODM versions: {ex.Message}");
                 return null;
             }
         }
@@ -727,10 +1008,18 @@ namespace UnicoStudio.UnicoLibs.VersionTracker
                 SdkInfo = s_sdkInfo;
                 RefreshSdkInfo();
             }
+
+            public BuildInfo(BuildTarget buildTarget)
+            {
+                ProjectInfo = new ProjectInfo(buildTarget);
+                SdkInfo = s_sdkInfo;
+                RefreshSdkInfo();
+            }
         }
 
         public record ProjectInfo
         {
+            public string GameId { get; }
             public string Platform { get; }
             public string UnityVersion { get; }
             public string PackageName { get; }
@@ -741,9 +1030,11 @@ namespace UnicoStudio.UnicoLibs.VersionTracker
             public string RenderPipeline { get; }
             public AndroidInfo Android { get; }
             public IOSInfo IOS { get; }
+            public MediationTypes MediationTypes { get; }
 
             [JsonConstructor]
-            public ProjectInfo(string platform,
+            public ProjectInfo(string gameId,
+                string platform,
                 string unityVersion,
                 string packageName,
                 string version,
@@ -752,8 +1043,10 @@ namespace UnicoStudio.UnicoLibs.VersionTracker
                 string managedStrippingLevel,
                 string renderPipeline,
                 AndroidInfo android,
-                IOSInfo ios)
+                IOSInfo ios,
+                MediationTypes mediationTypes)
             {
+                GameId = gameId;
                 Platform = platform;
                 UnityVersion = unityVersion;
                 PackageName = packageName;
@@ -764,10 +1057,12 @@ namespace UnicoStudio.UnicoLibs.VersionTracker
                 RenderPipeline = renderPipeline;
                 Android = android;
                 IOS = ios;
+                MediationTypes = mediationTypes;
             }
 
             public ProjectInfo(BuildSummary buildSummary)
             {
+                GameId = GetGameId();
                 Platform = buildSummary.platform.ToString();
                 UnityVersion = Application.unityVersion;
                 PackageName = Application.identifier;
@@ -776,9 +1071,27 @@ namespace UnicoStudio.UnicoLibs.VersionTracker
                 GraphicsAPIs = GetGraphicsAPI(buildSummary.platform);
                 ManagedStrippingLevel = GetManagedStrippingLevel(buildSummary.platformGroup);
                 RenderPipeline = GetRenderPipeline();
+                MediationTypes = GetMediationTypes();
 
                 if (buildSummary.platform == BuildTarget.Android) Android = new AndroidInfo();
                 if (buildSummary.platform == BuildTarget.iOS) IOS = new IOSInfo();
+            }
+
+            public ProjectInfo(BuildTarget buildTarget)
+            {
+                GameId = GetGameId();
+                Platform = buildTarget.ToString();
+                UnityVersion = Application.unityVersion;
+                PackageName = Application.identifier;
+                Version = PlayerSettings.bundleVersion;
+                CompressionMethod = "Default";
+                GraphicsAPIs = GetGraphicsAPI(buildTarget);
+                ManagedStrippingLevel = GetManagedStrippingLevel(BuildPipeline.GetBuildTargetGroup(buildTarget));
+                RenderPipeline = GetRenderPipeline();
+                MediationTypes = GetMediationTypes();
+
+                if (buildTarget == BuildTarget.Android) Android = new AndroidInfo();
+                if (buildTarget == BuildTarget.iOS) IOS = new IOSInfo();
             }
 
             public record AndroidInfo
@@ -835,7 +1148,8 @@ namespace UnicoStudio.UnicoLibs.VersionTracker
 
             private static string GetManagedStrippingLevel(BuildTargetGroup buildTargetGroup)
             {
-                return PlayerSettings.GetManagedStrippingLevel(buildTargetGroup).ToString();
+                var namedBuildTarget = NamedBuildTarget.FromBuildTargetGroup(buildTargetGroup);
+                return PlayerSettings.GetManagedStrippingLevel(namedBuildTarget).ToString();
             }
 
             private static string GetRenderPipeline()
@@ -922,10 +1236,19 @@ namespace UnicoStudio.UnicoLibs.VersionTracker
             }
         }
 
-        public record VersionInfo(string Name, string Version)
+        public record VersionInfo(string Id, string Name, string Version, string Android = null, string Ios = null)
         {
+            public string Id { get; private set; } = Id;
             public string Name { get; private set; } = Name;
             public string Version { get; private set; } = Version;
+            public string Android { get; private set; } = Android;
+            public string Ios { get; private set; } = Ios;
+        }
+
+        public record MediationTypes(string Android, string Ios)
+        {
+            public string Android { get; private set; } = Android;
+            public string Ios { get; private set; } = Ios;
         }
     }
 }
