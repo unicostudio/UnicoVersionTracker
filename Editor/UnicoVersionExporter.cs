@@ -11,7 +11,6 @@ using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using Newtonsoft.Json.Serialization;
 using UnityEditor;
-using UnityEditor.Build;
 using UnityEditor.Build.Reporting;
 using UnityEngine;
 using UnityEngine.Rendering;
@@ -114,7 +113,7 @@ namespace UnicoStudio.UnicoLibs.VersionTracker
             new SdkInfo("GoogleImmersiveAds",
                 new SdkVersionGetter("GoogleMobileAds.Api.MobileAds", GetGoogleImmersiveAdsVersion)),
             new SdkInfo("GoogleODM",
-                new SdkVersionGetter(null, null, null, GetGoogleOdmVersionsAsList)),
+                new SdkVersionGetter(null, GetGoogleOdmVersionsAsList)),
             new SdkInfo("Odeeo",
                 new SdkVersionGetter("Odeeo.OdeeoSdk", GetOdeeoVersion)),
             new SdkInfo("AmazonSdk",
@@ -182,40 +181,6 @@ namespace UnicoStudio.UnicoLibs.VersionTracker
             catch (Exception ex)
             {
                 Debug.LogError($"Error writing file: {ex}");
-            }
-            finally
-            {
-                UnicoVersionTrackerProgressBar.StopLoading();
-            }
-        }
-
-        /// <summary>
-        /// Exports the test build information to a json file from Unity Editor.
-        /// </summary>
-        /// <remarks>
-        /// The file path will be <c>Assets/../UnicoVersionTracker/[platform]_TestBuildInfo.json</c>.
-        /// </remarks>
-        [MenuItem("UnicoStudio/Export Test BuildInfo", priority = 0)]
-        private static async void ExportBuildInfoFromEditor()
-        {
-            try
-            {
-                UnicoVersionTrackerProgressBar.StartLoading();
-
-                // Get the current build target
-                var currentBuildTarget = EditorUserBuildSettings.activeBuildTarget;
-                
-                var buildInfo = new BuildInfo(currentBuildTarget);
-                var filePath = GetFilePath(string.Empty, $"{currentBuildTarget}_TestBuildInfo");
-                var json = JsonConvert.SerializeObject(buildInfo, s_jsonSerializerSettings);
-
-                // Save to file
-                await File.WriteAllTextAsync(filePath, json);
-                Debug.Log($"Test Build info saved to {filePath}");
-            }
-            catch (Exception ex)
-            {
-                Debug.LogError($"Error writing test build info file: {ex}");
             }
             finally
             {
@@ -1008,13 +973,6 @@ namespace UnicoStudio.UnicoLibs.VersionTracker
                 SdkInfo = s_sdkInfo;
                 RefreshSdkInfo();
             }
-
-            public BuildInfo(BuildTarget buildTarget)
-            {
-                ProjectInfo = new ProjectInfo(buildTarget);
-                SdkInfo = s_sdkInfo;
-                RefreshSdkInfo();
-            }
         }
 
         public record ProjectInfo
@@ -1077,23 +1035,6 @@ namespace UnicoStudio.UnicoLibs.VersionTracker
                 if (buildSummary.platform == BuildTarget.iOS) IOS = new IOSInfo();
             }
 
-            public ProjectInfo(BuildTarget buildTarget)
-            {
-                GameId = GetGameId();
-                Platform = buildTarget.ToString();
-                UnityVersion = Application.unityVersion;
-                PackageName = Application.identifier;
-                Version = PlayerSettings.bundleVersion;
-                CompressionMethod = "Default";
-                GraphicsAPIs = GetGraphicsAPI(buildTarget);
-                ManagedStrippingLevel = GetManagedStrippingLevel(BuildPipeline.GetBuildTargetGroup(buildTarget));
-                RenderPipeline = GetRenderPipeline();
-                MediationTypes = GetMediationTypes();
-
-                if (buildTarget == BuildTarget.Android) Android = new AndroidInfo();
-                if (buildTarget == BuildTarget.iOS) IOS = new IOSInfo();
-            }
-
             public record AndroidInfo
             {
                 public int BundleVersionCode { get; }
@@ -1148,8 +1089,7 @@ namespace UnicoStudio.UnicoLibs.VersionTracker
 
             private static string GetManagedStrippingLevel(BuildTargetGroup buildTargetGroup)
             {
-                var namedBuildTarget = NamedBuildTarget.FromBuildTargetGroup(buildTargetGroup);
-                return PlayerSettings.GetManagedStrippingLevel(namedBuildTarget).ToString();
+                return PlayerSettings.GetManagedStrippingLevel(buildTargetGroup).ToString();
             }
 
             private static string GetRenderPipeline()
