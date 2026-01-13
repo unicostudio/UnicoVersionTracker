@@ -102,7 +102,7 @@ namespace UnicoStudio.UnicoLibs.VersionTracker
         };
 
 
-        private static readonly List<SdkInfo> s_sdkInfo = new()
+        public static readonly List<SdkInfo> s_sdkInfo = new()
         {
             new SdkInfo("UnicoAPIClient",
                 new SdkVersionGetter(null, GetUnicoAPIClientVersion)),
@@ -970,6 +970,12 @@ namespace UnicoStudio.UnicoLibs.VersionTracker
             public BuildInfo(BuildSummary buildSummary)
             {
                 ProjectInfo = new ProjectInfo(buildSummary);
+                SdkInfo = s_sdkInfo;
+                RefreshSdkInfo();
+            }
+
+            public BuildInfo()
+            {
                 SdkInfo = s_sdkInfo;
                 RefreshSdkInfo();
             }
