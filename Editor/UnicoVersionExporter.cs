@@ -863,7 +863,7 @@ namespace UnicoStudio.UnicoLibs.VersionTracker
 
                 var xmlDocument = XDocument.Load(packagesConfigPath);
                 var unicoApiClientPackage = xmlDocument.Descendants("package")
-                    .FirstOrDefault(node => node.Attribute("id")?.Value == "unicoapiclient");
+                    .FirstOrDefault(node => string.Equals(node.Attribute("id")?.Value, "unicoapiclient", StringComparison.OrdinalIgnoreCase));
 
                 if (unicoApiClientPackage != null)
                 {
