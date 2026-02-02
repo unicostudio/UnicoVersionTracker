@@ -2,6 +2,32 @@
 
 All notable changes to this package will be documented in this file.
 
+## [1.5.0] - 2026-02-02
+
+* **NEW FEATURE**: Added UPM (Unity Package Manager) support for SDK version detection
+  * SDKs installed via UPM are now automatically detected as fallback
+  * Parses `packages-lock.json` for registry, tarball, git, and embedded packages
+  * Extended `SdkInfo` with `UpmPackageNames` for SDK-level fallback
+
+* **NEW FEATURE**: Firebase pluginVersionInfo UPM fallback
+  * Added support for 12 Firebase packages (Analytics, Auth, Crashlytics, Database, etc.)
+  * Detects Firebase versions when installed via UPM instead of Assets folder
+
+* **NEW FEATURE**: AdMob Mediation UPM fallback
+  * Added support for 18 AdMob mediation adapters (AppLovin, Meta, IronSource, etc.)
+  * Detects mediation versions when installed via OpenUPM
+
+* **IMPROVEMENT**: Consolidated error logging
+  * Errors only log when both primary (Assets) and UPM fallback fail
+  * Removed premature error messages for cleaner console output
+
+* **FIX**: Fixed AppLovin `LoadPluginData` bug
+  * Changed from async `LoadPluginData` to synchronous `LoadPluginDataSync` method
+  * Resolves "LoadPluginData did not return any PluginData" error
+
+* **FIX**: UnicoAPIClient case-insensitive package ID lookup
+  * Supports both `unicoapiclient` (legacy) and `UnicoApiClient` (pascal case)
+
 ## [1.4.0] - 2025-12-15
 
 * **NEW FEATURE**: Added UnicoConfig GameId integration to build information
