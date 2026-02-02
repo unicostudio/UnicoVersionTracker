@@ -20,6 +20,108 @@ namespace UnicoStudio.UnicoLibs.VersionTracker
     public static class UnicoVersionExporter
     {
         private const string ASSETS = "Assets";
+        private const string PACKAGES_LOCK_PATH = "Packages/packages-lock.json";
+
+        #region UPM Fallback Helpers
+
+        /// <summary>
+        /// Gets version from packages-lock.json for the given UPM package name.
+        /// </summary>
+        private static string GetVersionFromPackagesLock(string packageName)
+        {
+            if (!File.Exists(PACKAGES_LOCK_PATH)) return null;
+
+            try
+            {
+                var json = File.ReadAllText(PACKAGES_LOCK_PATH);
+                var lockFile = JObject.Parse(json);
+                var dependencies = lockFile["dependencies"] as JObject;
+
+                if (dependencies == null || !dependencies.ContainsKey(packageName)) return null;
+
+                var package = dependencies[packageName] as JObject;
+                var version = package?["version"]?.ToString();
+                var source = package?["source"]?.ToString();
+
+                return source switch
+                {
+                    "registry" => version,
+                    "local-tarball" => ExtractVersionFromTarballPath(version),
+                    "git" => GetVersionFromGitPackage(packageName),
+                    "embedded" => GetVersionFromEmbeddedPackage(packageName),
+                    _ => null
+                };
+            }
+            catch (Exception ex)
+            {
+                LogError($"Failed to parse packages-lock.json: {ex.Message}");
+                return null;
+            }
+        }
+
+        /// <summary>
+        /// Extracts version from tarball path like "file:../path/com.google.firebase.app-13.6.0.tgz"
+        /// </summary>
+        private static string ExtractVersionFromTarballPath(string path)
+        {
+            if (string.IsNullOrEmpty(path)) return null;
+            var match = Regex.Match(path, @"-(\d+\.\d+\.\d+)\.tgz$");
+            return match.Success ? match.Groups[1].Value : null;
+        }
+
+        /// <summary>
+        /// Gets version from embedded package's package.json
+        /// </summary>
+        private static string GetVersionFromEmbeddedPackage(string packageName) => ParsePackageJsonVersion(Path.Combine("Packages", packageName, "package.json"));
+
+        /// <summary>
+        /// Gets version from git package in Library/PackageCache
+        /// </summary>
+        private static string GetVersionFromGitPackage(string packageName)
+        {
+            var cacheDir = "Library/PackageCache";
+            if (!Directory.Exists(cacheDir)) return null;
+
+            var dirs = Directory.GetDirectories(cacheDir, $"{packageName}@*");
+            return dirs.Length > 0 ? ParsePackageJsonVersion(Path.Combine(dirs[0], "package.json")) : null;
+        }
+
+        /// <summary>
+        /// Parses version from a package.json file
+        /// </summary>
+        private static string ParsePackageJsonVersion(string path)
+        {
+            if (!File.Exists(path)) return null;
+            try
+            {
+                var json = File.ReadAllText(path);
+                return JObject.Parse(json)["version"]?.ToString();
+            }
+            catch
+            {
+                return null;
+            }
+        }
+
+        /// <summary>
+        /// Shared helper to get version info from packages-lock.json for a given package dictionary.
+        /// </summary>
+        private static List<VersionInfo> GetVersionInfoFromUpm(Dictionary<string, string> packages)
+        {
+            var versionInfo = new List<VersionInfo>();
+            foreach (var (packageName, displayName) in packages)
+            {
+                var version = GetVersionFromPackagesLock(packageName);
+                if (string.IsNullOrEmpty(version)) continue;
+
+                s_networkIdMapping.TryGetValue(displayName, out var networkId);
+                versionInfo.Add(new VersionInfo(networkId, displayName, version, version, version));
+            }
+
+            return versionInfo.Count > 0 ? versionInfo : null;
+        }
+
+        #endregion
 
         private static readonly JsonSerializerSettings s_jsonSerializerSettings = new()
         {
@@ -83,7 +185,9 @@ namespace UnicoStudio.UnicoLibs.VersionTracker
             { "LiftoffMonetize", "_liftoff_monetize_" },
             
             // Firebase
+            { "FirebaseAI", "_firebase_ai_" },
             { "FirebaseAnalytics", "_firebase_analytics_" },
+            { "FirebaseAppCheck", "_firebase_app_check_" },
             { "FirebaseAuth", "_firebase_auth_" },
             { "FirebaseCore", "_firebase_core_" },
             { "FirebaseCrashlytics", "_firebase_crashlytics_" },
@@ -101,15 +205,60 @@ namespace UnicoStudio.UnicoLibs.VersionTracker
             { "GoogleAdsOnDeviceConversion", "_google_ads_on_device_conversion_" },
         };
 
+        /// <summary>
+        /// Firebase UPM package names mapped to display names for pluginVersionInfo.
+        /// </summary>
+        private static readonly Dictionary<string, string> s_firebasePackages = new()
+        {
+            { "com.google.firebase.ai", "FirebaseAI" },
+            { "com.google.firebase.analytics", "FirebaseAnalytics" },
+            { "com.google.firebase.app-check", "FirebaseAppCheck" },
+            { "com.google.firebase.auth", "FirebaseAuth" },
+            { "com.google.firebase.crashlytics", "FirebaseCrashlytics" },
+            { "com.google.firebase.database", "FirebaseDatabase" },
+            { "com.google.firebase.firestore", "FirebaseFirestore" },
+            { "com.google.firebase.functions", "FirebaseFunctions" },
+            { "com.google.firebase.installations", "FirebaseInstallations" },
+            { "com.google.firebase.messaging", "FirebaseMessaging" },
+            { "com.google.firebase.remote-config", "FirebaseRemoteConfig" },
+            { "com.google.firebase.storage", "FirebaseStorage" },
+        };
+
+        /// <summary>
+        /// AdMob mediation UPM package names mapped to adapter display names.
+        /// </summary>
+        private static readonly Dictionary<string, string> s_admobMediationPackages = new()
+        {
+            { "com.google.ads.mobile.unity.mediation.applovin", "AppLovin" },
+            { "com.google.ads.mobile.unity.mediation.chartboost", "Chartboost" },
+            { "com.google.ads.mobile.unity.mediation.dtexchange", "DTExchange" },
+            { "com.google.ads.mobile.unity.mediation.imobile", "i-mobile" },
+            { "com.google.ads.mobile.unity.mediation.inmobi", "InMobi" },
+            { "com.google.ads.mobile.unity.mediation.ironsource", "IronSource" },
+            { "com.google.ads.mobile.unity.mediation.liftoffmonetize", "LiftoffMonetize" },
+            { "com.google.ads.mobile.unity.mediation.line", "LINE" },
+            { "com.google.ads.mobile.unity.mediation.maio", "Maio" },
+            { "com.google.ads.mobile.unity.mediation.meta", "Meta" },
+            { "com.google.ads.mobile.unity.mediation.mintegral", "Mintegral" },
+            { "com.google.ads.mobile.unity.mediation.moloco", "Moloco" },
+            { "com.google.ads.mobile.unity.mediation.mytarget", "myTarget" },
+            { "com.google.ads.mobile.unity.mediation.pangle", "Pangle" },
+            { "com.google.ads.mobile.unity.mediation.pubmatic", "PubMatic" },
+            { "com.google.ads.mobile.unity.mediation.unity", "UnityAds" },
+            { "com.google.ads.mobile.unity.mediation.vpon", "Vpon" },
+            { "com.google.ads.mobile.unity.mediation.zucks", "Zucks" },
+        };
 
         public static readonly List<SdkInfo> s_sdkInfo = new()
         {
             new SdkInfo("UnicoAPIClient",
                 new SdkVersionGetter(null, GetUnicoAPIClientVersion)),
             new SdkInfo("AppLovinMAX",
-                new SdkVersionGetter("MaxSdk", GetAppLovinVersion, "AppLovinMax.Scripts.IntegrationManager.Editor.AppLovinIntegrationManager", GetAppLovinVersions)),
+                new SdkVersionGetter("MaxSdk", GetAppLovinVersion, "AppLovinMax.Scripts.IntegrationManager.Editor.AppLovinIntegrationManager", GetAppLovinVersions),
+                upmPackageNames: new[] { "com.applovin.mediation.ads" }),
             new SdkInfo("GoogleAdMob",
-                new SdkVersionGetter("GoogleMobileAds.Api.MobileAds", GetAdMobVersion, GetAdMobMediationVersions)),
+                new SdkVersionGetter("GoogleMobileAds.Api.MobileAds", GetAdMobVersion, GetAdMobMediationVersions),
+                upmPackageNames: new[] { "com.google.ads.mobile" }),
             new SdkInfo("GoogleImmersiveAds",
                 new SdkVersionGetter("GoogleMobileAds.Api.MobileAds", GetGoogleImmersiveAdsVersion)),
             new SdkInfo("GoogleODM",
@@ -119,11 +268,13 @@ namespace UnicoStudio.UnicoLibs.VersionTracker
             new SdkInfo("AmazonSdk",
                 new SdkVersionGetter("AmazonConstants", GetAmazonSdkVersion)),
             new SdkInfo("AdjustSdk",
-                new SdkVersionGetter("AdjustSdk.Adjust", GetAdjustVersion)),
+                new SdkVersionGetter("AdjustSdk.Adjust", GetAdjustVersion),
+                upmPackageNames: new[] { "com.adjust.sdk" }),
             new SdkInfo("FacebookSdk",
                 new SdkVersionGetter("Facebook.Unity.FacebookSdkVersion", GetFacebookSdkVersion)),
             new SdkInfo("Firebase",
-                new SdkVersionGetter("Firebase.FirebaseApp", GetFirebaseVersion, GetFirebaseVersions)),
+                new SdkVersionGetter("Firebase.FirebaseApp", GetFirebaseVersion, GetFirebaseVersions),
+                upmPackageNames: new[] { "com.google.firebase.app" }),
         };
 
         /// <summary>
@@ -287,52 +438,21 @@ namespace UnicoStudio.UnicoLibs.VersionTracker
         {
             if (appLovinType == null) return null;
 
-            // Get the LoadPluginData method
-            var method = appLovinType.GetMethod("LoadPluginData", BindingFlags.Public | BindingFlags.Instance);
-            if (method == null)
+            // Use the static LoadPluginDataSync method (synchronous)
+            var syncMethod = appLovinType.GetMethod("LoadPluginDataSync", BindingFlags.Public | BindingFlags.Static);
+            if (syncMethod == null)
             {
-                LogError("LoadPluginData method not found!");
+                LogError("LoadPluginDataSync method not found!");
                 return null;
             }
 
-            var property = appLovinType.GetProperty("Instance", BindingFlags.Public | BindingFlags.Static);
-            if (property == null)
-            {
-                LogError("AppLovinIntegrationManager.Instance property not found!");
-                return null;
-            }
-
-            var appLovinInstance = property.GetValue(null);
-            if (appLovinInstance == null)
-            {
-                LogError("AppLovinIntegrationManager.Instance returned null!");
-                return null;
-            }
-
-            // Use reflection to define a result variable dynamically
-            object pluginData = null;
-
-            // Create a callback action to capture the result (using reflection)
-            Action<object> callback = data => { pluginData = data; };
-
-            // Prepare parameters (callback passed as object)
-            object[] parameters = { callback };
-
-            // Invoke LoadPluginData and get the IEnumerator
-            var enumerator = method.Invoke(appLovinInstance, parameters) as IEnumerator;
-            if (enumerator == null)
-            {
-                LogError("LoadPluginData did not return IEnumerator!");
-                return null;
-            }
-
-            // Process the enumerator until completion
-            WaitForCompletion(enumerator);
+            // Invoke LoadPluginDataSync (no parameters, returns PluginData directly)
+            var pluginData = syncMethod.Invoke(null, null);
 
             // If no result, return null
             if (pluginData == null)
             {
-                LogError("LoadPluginData did not return any PluginData! You may have internet connection problem..");
+                LogError("LoadPluginDataSync did not return any PluginData! You may have internet connection problem..");
                 return null;
             }
 
@@ -400,15 +520,6 @@ namespace UnicoStudio.UnicoLibs.VersionTracker
 
             return versionInfo;
 
-            void WaitForCompletion(IEnumerator waitEnumerator)
-            {
-                // Process the enumerator synchronously
-                while (waitEnumerator.MoveNext())
-                {
-                    // Handle yield return values if needed
-                }
-            }
-
             VersionInfo GetVersionInfoForNetwork(object networkObject)
             {
                 var networkType = networkObject?.GetType();
@@ -456,17 +567,11 @@ namespace UnicoStudio.UnicoLibs.VersionTracker
                 .FirstOrDefault();
 
             if (string.IsNullOrEmpty(googleMobileAdsPath))
-            {
-                LogError("GoogleMobileAds folder not found!");
-                return null;
-            }
+                return null;  // UPM fallback will be tried
 
             var files = Directory.GetFiles(googleMobileAdsPath, "GoogleMobileAds_version*.txt");
             if (files.Length <= 0)
-            {
-                LogError("AdMob Unity version file not found!");
                 return null;
-            }
 
             var fileName = Path.GetFileNameWithoutExtension(files[0]);
 
@@ -484,10 +589,7 @@ namespace UnicoStudio.UnicoLibs.VersionTracker
                 .FirstOrDefault();
 
             if (string.IsNullOrEmpty(mediationFolderPath))
-            {
-                LogError("GoogleMobileAds/Mediation folder not found!");
                 return null;
-            }
 
             var versionInfo = new List<VersionInfo>();
 
@@ -564,8 +666,13 @@ namespace UnicoStudio.UnicoLibs.VersionTracker
                 return null;
             }
 
-            return versionInfo.Any() ? versionInfo : null;
+            return versionInfo.Any() ? versionInfo : GetAdMobMediationVersionsFromUpm();
         }
+
+        /// <summary>
+        /// Gets AdMob mediation versions from packages-lock.json (UPM fallback).
+        /// </summary>
+        private static List<VersionInfo> GetAdMobMediationVersionsFromUpm() => GetVersionInfoFromUpm(s_admobMediationPackages);
 
         private static string GetGoogleImmersiveAdsVersion(Type _)
         {
@@ -640,17 +747,11 @@ namespace UnicoStudio.UnicoLibs.VersionTracker
                 .FirstOrDefault();
 
             if (string.IsNullOrEmpty(adjustPath))
-            {
-                LogError("Adjust folder not found!");
-                return null;
-            }
+                return null;  // UPM fallback will be tried
 
             var packageJsonPath = Path.Combine(adjustPath, "package.json");
             if (!File.Exists(packageJsonPath))
-            {
-                LogError("Adjust package.json not found!");
                 return null;
-            }
 
             var jsonContent = File.ReadAllText(packageJsonPath);
             var jsonObject = JObject.Parse(jsonContent);
@@ -658,10 +759,7 @@ namespace UnicoStudio.UnicoLibs.VersionTracker
             // Extract the "version" field
             var version = jsonObject["version"]?.ToString();
             if (string.IsNullOrEmpty(version))
-            {
-                LogError("Adjust version not found in package.json!");
                 return null;
-            }
 
             return version;
         }
@@ -683,17 +781,11 @@ namespace UnicoStudio.UnicoLibs.VersionTracker
                 .FirstOrDefault();
 
             if (string.IsNullOrEmpty(firebaseEditorPath))
-            {
-                LogError("Firebase/Editor folder not found!");
-                return null;
-            }
+                return null;  // UPM fallback will be tried
 
             var dependenciesPath = Path.Combine(firebaseEditorPath, "AppDependencies.xml");
             if (!File.Exists(dependenciesPath))
-            {
-                LogError("Firebase AppDependencies.xml file not found!");
                 return null;
-            }
 
             // Load the XML document
             var xmlDocument = XDocument.Load(dependenciesPath);
@@ -717,47 +809,46 @@ namespace UnicoStudio.UnicoLibs.VersionTracker
                 }
             }
 
-            LogError("Failed to fetch Firebase version!");
             return null;
         }
 
         private static List<VersionInfo> GetFirebaseVersions(Type _)
         {
-            // First, find the Firebase/Editor folder anywhere in the Assets folder
+            // PRIMARY: Search Assets folder for Firebase/Editor version files
             var firebaseEditorPath = Directory.GetDirectories(ASSETS, "*Firebase", SearchOption.AllDirectories)
                 .Where(dir => Directory.Exists(Path.Combine(dir, "Editor")))
                 .Select(dir => Path.Combine(dir, "Editor"))
                 .FirstOrDefault();
 
-            if (string.IsNullOrEmpty(firebaseEditorPath))
+            if (!string.IsNullOrEmpty(firebaseEditorPath))
             {
-                LogError("Firebase/Editor folder not found!");
-                return null;
+                var files = Directory.GetFiles(firebaseEditorPath, "Firebase*_version*.txt");
+                if (files.Length > 0)
+                {
+                    var versionInfo = new List<VersionInfo>();
+                    foreach (var file in files)
+                    {
+                        var fileName = Path.GetFileNameWithoutExtension(file);
+                        var split = fileName.Split('-');
+
+                        var name = split[0].Replace("_version", string.Empty);
+                        var version = split[1].Replace("_manifest", string.Empty);
+                        s_networkIdMapping.TryGetValue(name, out var networkId);
+                        versionInfo.Add(new VersionInfo(networkId, name, version, version, version));
+                    }
+
+                    return versionInfo;
+                }
             }
 
-            var files = Directory.GetFiles(firebaseEditorPath, "Firebase*_version*.txt");
-            if (files.Length <= 0)
-            {
-                LogError("Firebase plugin version files not found!");
-                return null;
-            }
-
-            var versionInfo = new List<VersionInfo>();
-            foreach (var file in files)
-            {
-                var fileName = Path.GetFileNameWithoutExtension(file);
-                var split = fileName.Split('-');
-
-                var name = split[0].Replace("_version", string.Empty); // "FirebaseAnalytics"
-                var version = split[1].Replace("_manifest", string.Empty); // "12.1.0"
-                // Get network ID from dictionary only
-                s_networkIdMapping.TryGetValue(name, out var networkId);
-                // Firebase versions are the same for both platforms
-                versionInfo.Add(new VersionInfo(networkId, name, version, version, version));
-            }
-
-            return versionInfo;
+            // FALLBACK: UPM packages-lock.json
+            return GetFirebaseVersionsFromUpm();
         }
+
+        /// <summary>
+        /// Gets Firebase plugin versions from packages-lock.json (UPM fallback).
+        /// </summary>
+        private static List<VersionInfo> GetFirebaseVersionsFromUpm() => GetVersionInfoFromUpm(s_firebasePackages);
 
         private static string GetUnicoAPIClientVersion(Type _)
         {
@@ -772,14 +863,13 @@ namespace UnicoStudio.UnicoLibs.VersionTracker
 
                 var xmlDocument = XDocument.Load(packagesConfigPath);
                 var unicoApiClientPackage = xmlDocument.Descendants("package")
-                    .FirstOrDefault(node => node.Attribute("id")?.Value == "unicoapiclient");
+                    .FirstOrDefault(node => string.Equals(node.Attribute("id")?.Value, "unicoapiclient", StringComparison.OrdinalIgnoreCase));
 
                 if (unicoApiClientPackage != null)
                 {
                     return unicoApiClientPackage.Attribute("version")?.Value;
                 }
 
-                LogError("UnicoAPIClient package not found in packages.config!");
                 return null;
             }
             catch (Exception ex)
@@ -946,11 +1036,6 @@ namespace UnicoStudio.UnicoLibs.VersionTracker
             var type = AppDomain.CurrentDomain.GetAssemblies()
                 .Select(assembly => assembly.GetType(typeFullName))
                 .FirstOrDefault(type => type != null);
-
-            if (type == null)
-            {
-                LogError($"Type not found in the project: {typeFullName}");
-            }
 
             return type;
         }
@@ -1131,6 +1216,7 @@ namespace UnicoStudio.UnicoLibs.VersionTracker
             [JsonProperty] public string Version { get; private set; }
             [JsonProperty] public List<VersionInfo> PluginVersionInfo { get; private set; }
             private SdkVersionGetter VersionGetter { get; }
+            private string[] UpmPackageNames { get; }  // Not serialized - for UPM fallback
 
             [JsonConstructor]
             public SdkInfo(string name, string version)
@@ -1139,10 +1225,11 @@ namespace UnicoStudio.UnicoLibs.VersionTracker
                 Version = version;
             }
 
-            public SdkInfo(string name, SdkVersionGetter versionGetter)
+            public SdkInfo(string name, SdkVersionGetter versionGetter, string[] upmPackageNames = null)
             {
                 Name = name;
                 VersionGetter = versionGetter;
+                UpmPackageNames = upmPackageNames;
             }
 
             public void SetVersion()
@@ -1153,6 +1240,21 @@ namespace UnicoStudio.UnicoLibs.VersionTracker
                 var type2 = FindTypeInAssemblies(VersionGetter.TypeFullName2);
 
                 Version = VersionGetter.Getter1?.Invoke(type1);
+
+                // FALLBACK: If version not found, try UPM packages-lock.json
+                if (string.IsNullOrEmpty(Version) && UpmPackageNames != null)
+                {
+                    foreach (var packageName in UpmPackageNames)
+                    {
+                        Version = GetVersionFromPackagesLock(packageName);
+                        if (!string.IsNullOrEmpty(Version)) break;
+                    }
+                }
+
+                // Log error only if both primary and UPM fallback failed
+                if (string.IsNullOrEmpty(Version) && VersionGetter.Getter1 != null)
+                    LogError($"SDK '{Name}' not found in Assets folder or UPM.");
+
                 PluginVersionInfo = VersionGetter.Getter2?.Invoke(type2);
             }
         }
