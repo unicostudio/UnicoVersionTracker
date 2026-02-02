@@ -287,52 +287,21 @@ namespace UnicoStudio.UnicoLibs.VersionTracker
         {
             if (appLovinType == null) return null;
 
-            // Get the LoadPluginData method
-            var method = appLovinType.GetMethod("LoadPluginData", BindingFlags.Public | BindingFlags.Instance);
-            if (method == null)
+            // Use the static LoadPluginDataSync method (synchronous)
+            var syncMethod = appLovinType.GetMethod("LoadPluginDataSync", BindingFlags.Public | BindingFlags.Static);
+            if (syncMethod == null)
             {
-                LogError("LoadPluginData method not found!");
+                LogError("LoadPluginDataSync method not found!");
                 return null;
             }
 
-            var property = appLovinType.GetProperty("Instance", BindingFlags.Public | BindingFlags.Static);
-            if (property == null)
-            {
-                LogError("AppLovinIntegrationManager.Instance property not found!");
-                return null;
-            }
-
-            var appLovinInstance = property.GetValue(null);
-            if (appLovinInstance == null)
-            {
-                LogError("AppLovinIntegrationManager.Instance returned null!");
-                return null;
-            }
-
-            // Use reflection to define a result variable dynamically
-            object pluginData = null;
-
-            // Create a callback action to capture the result (using reflection)
-            Action<object> callback = data => { pluginData = data; };
-
-            // Prepare parameters (callback passed as object)
-            object[] parameters = { callback };
-
-            // Invoke LoadPluginData and get the IEnumerator
-            var enumerator = method.Invoke(appLovinInstance, parameters) as IEnumerator;
-            if (enumerator == null)
-            {
-                LogError("LoadPluginData did not return IEnumerator!");
-                return null;
-            }
-
-            // Process the enumerator until completion
-            WaitForCompletion(enumerator);
+            // Invoke LoadPluginDataSync (no parameters, returns PluginData directly)
+            var pluginData = syncMethod.Invoke(null, null);
 
             // If no result, return null
             if (pluginData == null)
             {
-                LogError("LoadPluginData did not return any PluginData! You may have internet connection problem..");
+                LogError("LoadPluginDataSync did not return any PluginData! You may have internet connection problem..");
                 return null;
             }
 
@@ -399,15 +368,6 @@ namespace UnicoStudio.UnicoLibs.VersionTracker
             }
 
             return versionInfo;
-
-            void WaitForCompletion(IEnumerator waitEnumerator)
-            {
-                // Process the enumerator synchronously
-                while (waitEnumerator.MoveNext())
-                {
-                    // Handle yield return values if needed
-                }
-            }
 
             VersionInfo GetVersionInfoForNetwork(object networkObject)
             {
